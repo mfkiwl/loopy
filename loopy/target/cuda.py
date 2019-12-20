@@ -217,6 +217,9 @@ class CudaTarget(CFamilyTarget):
 # {{{ ast builder
 
 class CUDACASTBuilder(CFamilyASTBuilder):
+
+    function_qualifier = 'inline __device__'
+
     # {{{ library
 
     def function_manglers(self):
