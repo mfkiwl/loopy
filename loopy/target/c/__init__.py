@@ -100,55 +100,55 @@ def _preamble_generator(preamble_info, func_qualifier='inline'):
     function_defs = {
             "loopy_floor_div": r"""
             #define LOOPY_DEFINE_FLOOR_DIV(SUFFIX, TYPE) \
-                %s TYPE loopy_floor_div_##SUFFIX(TYPE a, TYPE b) \
-                { \
+                {} TYPE loopy_floor_div_##SUFFIX(TYPE a, TYPE b) \
+                {{ \
                     if ((a<0) != (b<0)) \
                         a = a - (b + (b<0) - (b>=0)); \
                     return a/b; \
-                }
+                }}
             LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_FLOOR_DIV)
             #undef LOOPY_DEFINE_FLOOR_DIV
-            """ % func_qualifier,
+            """.format(func_qualifier),
 
             "loopy_floor_div_pos_b": r"""
             #define LOOPY_DEFINE_FLOOR_DIV_POS_B(SUFFIX, TYPE) \
-                %s TYPE loopy_floor_div_pos_b_##SUFFIX(TYPE a, TYPE b) \
-                { \
+                {} TYPE loopy_floor_div_pos_b_##SUFFIX(TYPE a, TYPE b) \
+                {{ \
                     if (a<0) \
                         a = a - (b-1); \
                     return a/b; \
-                }
+                }}
             LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_FLOOR_DIV_POS_B)
             #undef LOOPY_DEFINE_FLOOR_DIV_POS_B
-            """ % func_qualifier,
+            """.format(func_qualifier),
 
             "loopy_mod": r"""
             #define LOOPY_DEFINE_MOD(SUFFIX, TYPE) \
-                %s TYPE loopy_mod_##SUFFIX(TYPE a, TYPE b) \
-                { \
+                {} TYPE loopy_mod_##SUFFIX(TYPE a, TYPE b) \
+                {{ \
                     TYPE result = a%b; \
                     if (result < 0 && b > 0) \
                         result += b; \
                     if (result > 0 && b < 0) \
                         result = result + b; \
                     return result; \
-                }
+                }}
             LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_MOD)
             #undef LOOPY_DEFINE_MOD
-            """ % func_qualifier,
+            """ .format(func_qualifier),
 
             "loopy_mod_pos_b": r"""
             #define LOOPY_DEFINE_MOD_POS_B(SUFFIX, TYPE) \
-                %s TYPE loopy_mod_pos_b_##SUFFIX(TYPE a, TYPE b) \
-                { \
+                {} TYPE loopy_mod_pos_b_##SUFFIX(TYPE a, TYPE b) \
+                {{ \
                     TYPE result = a%b; \
                     if (result < 0) \
                         result += b; \
                     return result; \
-                }
+                }}
             LOOPY_CALL_WITH_INTEGER_TYPES(LOOPY_DEFINE_MOD_POS_B)
             #undef LOOPY_DEFINE_MOD_POS_B
-            """ % func_qualifier,
+            """.format(func_qualifier),
             }
 
     c_funcs = set(func.c_name for func in preamble_info.seen_functions)
