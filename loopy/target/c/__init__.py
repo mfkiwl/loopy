@@ -470,7 +470,7 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
 
 class CFamilyASTBuilder(ASTBuilderBase):
 
-    function_qualifier = 'inline'
+    preamble_function_qualifier = 'inline'
 
     # {{{ library
 
@@ -490,7 +490,7 @@ class CFamilyASTBuilder(ASTBuilderBase):
         return (
                 super(CFamilyASTBuilder, self).preamble_generators() + [
                     lambda preamble_info: _preamble_generator(preamble_info,
-                        self.function_qualifier),
+                        self.preamble_function_qualifier),
                     ])
 
     # }}}

@@ -218,7 +218,7 @@ class CudaTarget(CFamilyTarget):
 
 class CUDACASTBuilder(CFamilyASTBuilder):
 
-    function_qualifier = 'inline __device__'
+    preamble_function_qualifier = 'inline __device__'
 
     # {{{ library
 
