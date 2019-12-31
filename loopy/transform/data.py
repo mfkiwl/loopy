@@ -320,7 +320,8 @@ def add_prefetch(kernel, var_name, sweep_inames=[], dim_arg_names=None,
     # }}}
 
     from loopy.transform.subst import extract_subst
-    kernel = extract_subst(kernel, rule_name, uni_template, parameters)
+    kernel = extract_subst(kernel, rule_name, uni_template, parameters,
+            within=within)
 
     if isinstance(sweep_inames, str):
         sweep_inames = [s.strip() for s in sweep_inames.split(",")]
