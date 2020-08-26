@@ -9,12 +9,6 @@ from loopy.types import NumpyType
 def c_vecextensions_function_mangler(kernel, name, arg_dtypes):
     return None
 
-
-def c_vecextensions_preamble_generator(preamble_info):
-    # FIXME: typedef int vs4si __attribute__((vector_size(16))), and folks.
-    if False:
-        yield
-
 # }}}
 
 
@@ -34,29 +28,25 @@ def _create_vector_types():
     counts = [2, 3, 4, 8, 16]
 
     for base_name, base_type in [
-            ('sc', np.int8),
-            ('uc', np.uint8),
-            ('ss', np.int16),
-            ('us', np.uint16),
-            ('si', np.int32),
-            ('ui', np.uint32),
-            ('sl', np.int64),
-            ('ul', np.uint64),
-            ('f', np.float32),
-            ('d', np.float64),
+            ('char', np.int8),
+            ('unsigned char', np.uint8),
+            ('short', np.int16),
+            ('unsigned short', np.uint16),
+            ('int', np.int32),
+            ('unsigned int', np.uint32),
+            ('long', np.int64),
+            ('unsigned long', np.uint64),
+            ('float', np.float32),
+            ('double', np.float64),
             ]:
         for count in counts:
-            name = "v%s%d" % (base_name, count)
+            byte_count = count*np.dtype(base_type).itemsize
+            name = "%s __attribute__((vector_size(%d)))" % (base_name,
+                    byte_count)
 
             titles = field_names[:count]
 
-            padded_count = count
-            if count == 3:
-                padded_count = 4
-
             names = ["s%d" % i for i in range(count)]
-            while len(names) < padded_count:
-                names.append("padding%d" % (len(names)-count))
 
             if len(titles) < len(names):
                 titles.extend((len(names)-len(titles))*[None])
@@ -64,7 +54,7 @@ def _create_vector_types():
             try:
                 dtype = np.dtype(dict(
                     names=names,
-                    formats=[base_type]*padded_count,
+                    formats=[base_type]*count,
                     titles=titles))
             except NotImplementedError:
                 try:
@@ -145,7 +135,6 @@ class CVectorExtensionsASTBuilder(CASTBuilder):
 
         return (
                 super(CVectorExtensionsASTBuilder, self).preamble_generators() + [
-                    c_vecextensions_preamble_generator,
                     reduction_preamble_generator,
                     ])
 
