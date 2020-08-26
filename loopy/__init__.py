@@ -143,6 +143,7 @@ from loopy.frontend.fortran import (c_preprocess, parse_transformed_fortran,
 
 from loopy.target import TargetBase, ASTBuilderBase
 from loopy.target.c import CFamilyTarget, CTarget, ExecutableCTarget, generate_header
+from loopy.target.c_vector_extensions import CVectorExtensionsTarget
 from loopy.target.cuda import CudaTarget
 from loopy.target.opencl import OpenCLTarget
 from loopy.target.pyopencl import PyOpenCLTarget
@@ -272,6 +273,7 @@ __all__ = [
 
         "TargetBase",
         "CFamilyTarget", "CTarget", "ExecutableCTarget", "generate_header",
+        "CVectorExtensionsTarget",
         "CudaTarget", "OpenCLTarget",
         "PyOpenCLTarget", "ISPCTarget",
         "NumbaTarget", "NumbaCudaTarget",
