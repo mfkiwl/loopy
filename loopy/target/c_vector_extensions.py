@@ -11,7 +11,9 @@ def c_vecextensions_function_mangler(kernel, name, arg_dtypes):
 
 
 def c_vecextensions_preamble_generator(preamble_info):
-    return
+    # FIXME: typedef int vs4si __attribute__((vector_size(16))), and folks.
+    if False:
+        yield
 
 # }}}
 
@@ -32,19 +34,19 @@ def _create_vector_types():
     counts = [2, 3, 4, 8, 16]
 
     for base_name, base_type in [
-            ('char', np.int8),
-            ('uchar', np.uint8),
-            ('short', np.int16),
-            ('ushort', np.uint16),
-            ('int', np.int32),
-            ('uint', np.uint32),
-            ('long', np.int64),
-            ('ulong', np.uint64),
-            ('float', np.float32),
-            ('double', np.float64),
+            ('sc', np.int8),
+            ('uc', np.uint8),
+            ('ss', np.int16),
+            ('us', np.uint16),
+            ('si', np.int32),
+            ('ui', np.uint32),
+            ('sl', np.int64),
+            ('ul', np.uint64),
+            ('f', np.float32),
+            ('d', np.float64),
             ]:
         for count in counts:
-            name = "%s%d" % (base_name, count)
+            name = "v%s%d" % (base_name, count)
 
             titles = field_names[:count]
 
@@ -102,15 +104,17 @@ class CVectorExtensionsTarget(CTarget):
 
     @memoize_method
     def get_dtype_registry(self):
-        from loopy.target.c.compyte.dtypes import (DTypeRegistry,
-                fill_registry_with_opencl_c_types)
+        from loopy.target.c.compyte.dtypes import (
+                DTypeRegistry, fill_registry_with_c99_stdint_types,
+                fill_registry_with_c99_complex_types)
+        from loopy.target.c import DTypeRegistryWrapper
 
         result = DTypeRegistry()
-        fill_registry_with_opencl_c_types(result)
-
-        # no complex number support--needs PyOpenCLTarget
+        fill_registry_with_c99_stdint_types(result)
+        fill_registry_with_c99_complex_types(result)
 
         _register_vector_types(result)
+        return DTypeRegistryWrapper(result)
 
     def is_vector_dtype(self, dtype):
         return (isinstance(dtype, NumpyType)
@@ -146,5 +150,8 @@ class CVectorExtensionsASTBuilder(CASTBuilder):
                     ])
 
     # }}}
+
+    def add_vector_access(self, access_expr, index):
+        return access_expr[index]
 
 # }}}
