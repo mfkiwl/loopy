@@ -45,6 +45,28 @@ from loopy.kernel.instruction import (  # noqa
         CInstruction)
 from warnings import warn
 
+__doc__ = """
+.. currentmodule:: loopy.kernel.data
+
+.. autofunction:: filter_iname_tags_by_type
+
+.. autoclass:: IndexTag
+
+.. autoclass:: ConcurrentTag
+
+.. autoclass:: UniqueTag
+
+.. autoclass:: AxisTag
+
+.. autoclass:: LocalIndexTag
+
+.. autoclass:: GroupIndexTag
+
+.. autoclass:: VectorizeTag
+
+.. autoclass:: UnrollTag
+"""
+
 
 class auto(object):  # noqa
     """A generic placeholder object for something that should be automatically
@@ -186,7 +208,7 @@ class LoopedIlpTag(IlpBaseTag):
 # }}}
 
 
-class VectorizeTag(UniqueTag):
+class VectorizeTag(UniqueTag, HardwareConcurrentTag):
     def __str__(self):
         return "vec"
 
@@ -282,7 +304,7 @@ class _deprecated_temp_var_scope_class_method(object):  # noqa
 
 
 class temp_var_scope(object):  # noqa
-    """Deprecated. Use :class:`AddressSpace` instead.
+    """Deprecated. Use :class:`loopy.AddressSpace` instead.
     """
 
     @_deprecated_temp_var_scope_class_method
@@ -525,7 +547,7 @@ class TemporaryVariable(ArrayBase):
             "_base_storage_access_may_be_aliasing",
             ]
 
-    def __init__(self, name, dtype=None, shape=(), address_space=None,
+    def __init__(self, name, dtype=None, shape=auto, address_space=None,
             dim_tags=None, offset=0, dim_names=None, strides=None, order=None,
             base_indices=None, storage_shape=None,
             base_storage=None, initializer=None, read_only=False,
@@ -579,7 +601,10 @@ class TemporaryVariable(ArrayBase):
 
             if shape is auto:
                 shape = initializer.shape
-
+            else:
+                if shape != initializer.shape:
+                    raise LoopyError("Shape of '{}' does not match that of the"
+                            " initializer.".format(name))
         else:
             raise LoopyError(
                     "temporary variable '%s': "
@@ -589,7 +614,7 @@ class TemporaryVariable(ArrayBase):
         if order is None:
             order = "C"
 
-        if base_indices is None:
+        if base_indices is None and shape is not auto:
             base_indices = (0,) * len(shape)
 
         if not read_only and initializer is not None:
@@ -784,12 +809,12 @@ class CallMangleInfo(ImmutableRecord):
 
     .. attribute:: result_dtypes
 
-        A tuple of :class:`LoopyType` instances indicating what
+        A tuple of :class:`loopy.types.LoopyType` instances indicating what
         types of values the function returns.
 
     .. attribute:: arg_dtypes
 
-        A tuple of :class:`LoopyType` instances indicating what
+        A tuple of :class:`loopy.types.LoopyType` instances indicating what
         types of arguments the function actually receives.
     """
 

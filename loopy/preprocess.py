@@ -37,6 +37,7 @@ from loopy.version import DATA_MODEL_VERSION
 from loopy.kernel.data import make_assignment, filter_iname_tags_by_type
 # for the benefit of loopy.statistics, for now
 from loopy.type_inference import infer_unknown_types
+from loopy.transform.iname import remove_any_newly_unused_inames
 
 import logging
 logger = logging.getLogger(__name__)
@@ -289,7 +290,7 @@ def _classify_reduction_inames(kernel, inames):
     nonlocal_par = []
 
     from loopy.kernel.data import (
-            LocalIndexTagBase, UnrolledIlpTag, UnrollTag, VectorizeTag,
+            LocalIndexTagBase, UnrolledIlpTag, UnrollTag,
             ConcurrentTag, filter_iname_tags_by_type)
 
     for iname in inames:
@@ -303,7 +304,7 @@ def _classify_reduction_inames(kernel, inames):
         elif filter_iname_tags_by_type(iname_tags, LocalIndexTagBase):
             local_par.append(iname)
 
-        elif filter_iname_tags_by_type(iname_tags, (ConcurrentTag, VectorizeTag)):
+        elif filter_iname_tags_by_type(iname_tags, ConcurrentTag):
             nonlocal_par.append(iname)
 
         else:
@@ -882,6 +883,7 @@ def _insert_subdomain_into_domain_tree(kernel, domains, subdomain):
 # }}}
 
 
+@remove_any_newly_unused_inames
 def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
                       automagic_scans_ok=False, force_scan=False,
                       force_outer_iname_for_scan=None):
@@ -1370,7 +1372,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         track_iname = var_name_gen(
                 "{sweep_iname}__seq_scan"
-                .format(scan_iname=scan_iname, sweep_iname=sweep_iname))
+                .format(sweep_iname=sweep_iname))
 
         get_or_add_sweep_tracking_iname_and_domain(
                 scan_iname, sweep_iname, sweep_min_value, scan_min_value,
@@ -1480,7 +1482,7 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
         track_iname = var_name_gen(
                 "{sweep_iname}__pre_scan"
-                .format(scan_iname=scan_iname, sweep_iname=sweep_iname))
+                .format(sweep_iname=sweep_iname))
 
         get_or_add_sweep_tracking_iname_and_domain(
                 scan_iname, sweep_iname, sweep_min_value, scan_min_value, stride,
@@ -1924,8 +1926,6 @@ def realize_reduction(kernel, insn_id_filter=None, unknown_types_ok=True,
 
     kernel = lp.tag_inames(kernel, new_iname_tags)
 
-    # TODO: remove unused inames...
-
     kernel = (
             _hackily_ensure_multi_assignment_return_values_are_scoped_private(
                 kernel))
@@ -1950,114 +1950,6 @@ def realize_ilp(kernel):
 
     from loopy.transform.privatize import privatize_temporaries_with_inames
     return privatize_temporaries_with_inames(kernel, privatizing_inames)
-
-# }}}
-
-
-# {{{ find idempotence ("boostability") of instructions
-
-def find_idempotence(kernel):
-    logger.debug("%s: idempotence" % kernel.name)
-
-    writer_map = kernel.writer_map()
-
-    arg_names = set(arg.name for arg in kernel.args)
-
-    var_names = arg_names | set(six.iterkeys(kernel.temporary_variables))
-
-    reads_map = dict(
-            (insn.id, insn.read_dependency_names() & var_names)
-            for insn in kernel.instructions)
-
-    from collections import defaultdict
-    dep_graph = defaultdict(set)
-
-    for insn in kernel.instructions:
-        dep_graph[insn.id] = set(writer_id
-                for var in reads_map[insn.id]
-                for writer_id in writer_map.get(var, set()))
-
-    # Find SCCs of dep_graph. These are used for checking if the instruction is
-    # in a dependency cycle.
-    from loopy.tools import compute_sccs
-
-    sccs = dict((item, scc)
-            for scc in compute_sccs(dep_graph)
-            for item in scc)
-
-    non_idempotently_updated_vars = set()
-
-    new_insns = []
-    for insn in kernel.instructions:
-        boostable = len(sccs[insn.id]) == 1 and insn.id not in dep_graph[insn.id]
-
-        if not boostable:
-            non_idempotently_updated_vars.update(
-                    insn.assignee_var_names())
-
-        new_insns.append(insn.copy(boostable=boostable))
-
-    # {{{ remove boostability from isns that access non-idempotently updated vars
-
-    new2_insns = []
-    for insn in new_insns:
-        if insn.boostable and bool(
-                non_idempotently_updated_vars & insn.dependency_names()):
-            new2_insns.append(insn.copy(boostable=False))
-        else:
-            new2_insns.append(insn)
-
-    # }}}
-
-    return kernel.copy(instructions=new2_insns)
-
-# }}}
-
-
-# {{{ limit boostability
-
-def limit_boostability(kernel):
-    """Finds out which other inames an instruction's inames occur with
-    and then limits boostability to just those inames.
-    """
-
-    logger.debug("%s: limit boostability" % kernel.name)
-
-    iname_occurs_with = {}
-    for insn in kernel.instructions:
-        insn_inames = kernel.insn_inames(insn)
-        for iname in insn_inames:
-            iname_occurs_with.setdefault(iname, set()).update(insn_inames)
-
-    iname_use_counts = {}
-    for insn in kernel.instructions:
-        for iname in kernel.insn_inames(insn):
-            iname_use_counts[iname] = iname_use_counts.get(iname, 0) + 1
-
-    single_use_inames = set(iname for iname, uc in six.iteritems(iname_use_counts)
-            if uc == 1)
-
-    new_insns = []
-    for insn in kernel.instructions:
-        if insn.boostable is None:
-            raise LoopyError("insn '%s' has undetermined boostability" % insn.id)
-        elif insn.boostable:
-            boostable_into = set()
-            for iname in kernel.insn_inames(insn):
-                boostable_into.update(iname_occurs_with[iname])
-
-            boostable_into -= kernel.insn_inames(insn) | single_use_inames
-
-            # Even if boostable_into is empty, leave boostable flag on--it is used
-            # for boosting into unused hw axes.
-
-            insn = insn.copy(boostable_into=boostable_into)
-        else:
-            insn = insn.copy(boostable_into=set())
-
-        new_insns.append(insn)
-
-    return kernel.copy(instructions=new_insns)
 
 # }}}
 
@@ -2184,10 +2076,6 @@ def preprocess_kernel(kernel, device=None):
     kernel = realize_ilp(kernel)
 
     kernel = find_temporary_address_space(kernel)
-
-    # boostability should be removed in 2017.x.
-    kernel = find_idempotence(kernel)
-    kernel = limit_boostability(kernel)
 
     # check for atomic loads, much easier to do here now that the dependencies
     # have been established

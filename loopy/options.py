@@ -89,12 +89,6 @@ class Options(ImmutableRecord):
         Like :attr:`trace_assignments`, but also trace the
         assigned values.
 
-    .. attribute:: ignore_boostable_into
-
-        Ignore the boostable_into field of the kernel, when
-        determining whether an iname duplication is necessary
-        for the kernel to be schedulable.
-
     .. attribute:: check_dep_resolution
 
         Whether loopy should issue an error if a dependency
@@ -117,7 +111,7 @@ class Options(ImmutableRecord):
     .. attribute:: cl_exec_manage_array_events
 
         Within the PyOpenCL executor, respect and udpate
-        :attr:`pyopencl.array.Array.event`.
+        :attr:`pyopencl.array.Array.events`.
 
         Defaults to *True*.
 
@@ -146,7 +140,7 @@ class Options(ImmutableRecord):
     .. attribute:: edit_code
 
         Invoke an editor (given by the environment variable
-        :envvar:`EDITOR`) on the generated kernel code,
+        ``EDITOR``) on the generated kernel code,
         allowing for tweaks before the code is passed on to
         the target for compilation.
 
@@ -211,7 +205,6 @@ class Options(ImmutableRecord):
                 annotate_inames=kwargs.get("annotate_inames", False),
                 trace_assignments=kwargs.get("trace_assignments", False),
                 trace_assignment_values=kwargs.get("trace_assignment_values", False),
-                ignore_boostable_into=kwargs.get("ignore_boostable_into", False),
 
                 skip_arg_checks=kwargs.get("skip_arg_checks", False),
                 no_numpy=kwargs.get("no_numpy", False),
@@ -228,7 +221,7 @@ class Options(ImmutableRecord):
                 check_dep_resolution=kwargs.get("check_dep_resolution", True),
 
                 enforce_variable_access_ordered=kwargs.get(
-                    "enforce_variable_access_ordered", False),
+                    "enforce_variable_access_ordered", True),
                 )
 
     # {{{ legacy compatibility

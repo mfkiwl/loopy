@@ -38,14 +38,14 @@ class InstructionBase(ImmutableRecord):
     .. attribute:: id
 
         An (otherwise meaningless) identifier that is unique within
-        a :class:`loopy.kernel.LoopKernel`.
+        a :class:`loopy.LoopKernel`.
 
     .. rubric:: Instruction ordering
 
     .. attribute:: depends_on
 
-        a :class:`frozenset` of :attr:`id` values of :class:`Instruction` instances
-        that *must* be executed before this one. Note that
+        a :class:`frozenset` of :attr:`id` values of :class:`InstructionBase`
+        instances that *must* be executed before this one. Note that
         :func:`loopy.preprocess_kernel` (usually invoked automatically)
         augments this by adding dependencies on any writes to temporaries read
         by this instruction.
@@ -66,7 +66,8 @@ class InstructionBase(ImmutableRecord):
     .. attribute:: depends_on_is_final
 
         A :class:`bool` determining whether :attr:`depends_on` constitutes
-        the *entire* list of iname dependencies.
+        the *entire* list of iname dependencies. If *not* marked final,
+        various semi-broken heuristics will try to add further dependencies.
 
         Defaults to *False*.
 
@@ -80,7 +81,7 @@ class InstructionBase(ImmutableRecord):
     .. attribute:: conflicts_with_groups
 
         A :class:`frozenset` of strings indicating which instruction groups
-        (see :class:`InstructionBase.groups`) may not be active when this
+        (see :attr:`groups`) may not be active when this
         instruction is scheduled.
 
     .. attribute:: priority
@@ -93,7 +94,7 @@ class InstructionBase(ImmutableRecord):
     .. attribute:: no_sync_with
 
         a :class:`frozenset` of tuples of the form ``(insn_id, scope)``, where
-        `insn_id` refers to :attr:`id` of :class:`Instruction` instances
+        ``insn_id`` refers to :attr:`id` of :class:`InstructionBase` instances
         and `scope` is one of the following strings:
 
            - `"local"`
@@ -112,7 +113,7 @@ class InstructionBase(ImmutableRecord):
         and match expression, just like :attr:`depends_on`.
 
         This data is used specifically by barrier insertion and
-        :func:`loopy.check.enforce_variable_access_ordered`.
+        :func:`loopy.check.check_variable_access_ordered`.
 
     .. rubric:: Conditionals
 
@@ -150,15 +151,14 @@ class InstructionBase(ImmutableRecord):
     .. automethod:: copy
     """
 
-    # within_inames_is_final, boostable and boostable_into are deprecated and
-    # will be removed in version 2017.x.
+    # within_inames_is_final is deprecated and will be removed in version 2017.x.
 
     fields = set("id depends_on depends_on_is_final "
             "groups conflicts_with_groups "
             "no_sync_with "
             "predicates "
             "within_inames_is_final within_inames "
-            "priority boostable boostable_into".split())
+            "priority".split())
 
     # Names of fields that are pymbolic expressions. Needed for key building
     pymbolic_fields = set("")
@@ -171,30 +171,7 @@ class InstructionBase(ImmutableRecord):
             no_sync_with,
             within_inames_is_final, within_inames,
             priority,
-            boostable, boostable_into, predicates, tags,
-            insn_deps=None, insn_deps_is_final=None,
-            forced_iname_deps=None, forced_iname_deps_is_final=None):
-
-        # {{{ backwards compatibility goop
-
-        if depends_on is not None and insn_deps is not None:
-            raise LoopyError("may not specify both insn_deps and depends_on")
-        elif insn_deps is not None:
-            warn("insn_deps is deprecated, use depends_on",
-                    DeprecationWarning, stacklevel=2)
-
-            depends_on = insn_deps
-            depends_on_is_final = insn_deps_is_final
-
-        if forced_iname_deps is not None and within_inames is not None:
-            raise LoopyError("may not specify both forced_iname_deps "
-                    "and within_inames")
-        elif forced_iname_deps is not None:
-            warn("forced_iname_deps is deprecated, use within_inames",
-                    DeprecationWarning, stacklevel=2)
-
-            within_inames = forced_iname_deps
-            within_inames_is_final = forced_iname_deps_is_final
+            predicates, tags):
 
         if predicates is None:
             predicates = frozenset()
@@ -215,8 +192,6 @@ class InstructionBase(ImmutableRecord):
 
         predicates = frozenset(new_predicates)
         del new_predicates
-
-        # }}}
 
         if depends_on is None:
             depends_on = frozenset()
@@ -282,41 +257,8 @@ class InstructionBase(ImmutableRecord):
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
                 priority=priority,
-                boostable=boostable,
-                boostable_into=boostable_into,
                 predicates=predicates,
                 tags=tags)
-
-    # {{{ backwards compatibility goop
-
-    @property
-    def insn_deps(self):
-        warn("insn_deps is deprecated, use depends_on",
-                DeprecationWarning, stacklevel=2)
-
-        return self.depends_on
-
-    # legacy
-    @property
-    def insn_deps_is_final(self):
-        warn("insn_deps_is_final is deprecated, use depends_on_is_final",
-                DeprecationWarning, stacklevel=2)
-
-        return self.depends_on_is_final
-
-    @property
-    def forced_iname_deps(self):
-        warn("forced_iname_deps is deprecated, use within_inames",
-                DeprecationWarning, stacklevel=2)
-        return self.within_inames
-
-    @property
-    def forced_iname_deps_is_final(self):
-        warn("forced_iname_deps_is_final is deprecated, use within_inames_is_final",
-                DeprecationWarning, stacklevel=2)
-        return self.within_inames_is_final
-
-    # }}}
 
     # {{{ abstract interface
 
@@ -344,10 +286,13 @@ class InstructionBase(ImmutableRecord):
         """
         raise NotImplementedError
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, assignee_f=None):
         """Return a new copy of *self* where *f* has been applied to every
         expression occurring in *self*. *args* will be passed as extra
         arguments (in addition to the expression) to *f*.
+
+        If *assignee_f* is passed, then left-hand sides of assignments are
+        passed to it. If it is not given, it defaults to the same as *f*.
         """
         raise NotImplementedError
 
@@ -390,18 +335,6 @@ class InstructionBase(ImmutableRecord):
 
     def get_str_options(self):
         result = []
-
-        if self.boostable is True:
-            if self.boostable_into:
-                result.append("boostable into '%s'" % ",".join(self.boostable_into))
-            else:
-                result.append("boostable")
-        elif self.boostable is False:
-            result.append("not boostable")
-        elif self.boostable is None:
-            pass
-        else:
-            raise RuntimeError("unexpected value for Instruction.boostable")
 
         if self.depends_on:
             result.append("dep="+":".join(self.depends_on))
@@ -463,21 +396,6 @@ class InstructionBase(ImmutableRecord):
         key_builder.rec(key_hash, self._key_builder.hash_key())
 
     # }}}
-
-    def copy(self, **kwargs):
-        if "insn_deps" in kwargs:
-            warn("insn_deps is deprecated, use depends_on",
-                    DeprecationWarning, stacklevel=2)
-
-            kwargs["depends_on"] = kwargs.pop("insn_deps")
-
-        if "insn_deps_is_final" in kwargs:
-            warn("insn_deps_is_final is deprecated, use depends_on",
-                    DeprecationWarning, stacklevel=2)
-
-            kwargs["depends_on_is_final"] = kwargs.pop("insn_deps_is_final")
-
-        return super(InstructionBase, self).copy(**kwargs)
 
     def __setstate__(self, val):
         super(InstructionBase, self).__setstate__(val)
@@ -773,7 +691,8 @@ class AtomicInit(OrderedAtomic):
 
 
 class AtomicUpdate(OrderedAtomic):
-    """Properties of an atomic update. A subclass of :class:`OrderedAtomic`.
+    """Properties of an atomic update. A subclass of
+    :class:`OrderedAtomic`.
 
     .. attribute:: ordering
 
@@ -908,11 +827,9 @@ class Assignment(MultiAssignmentBase):
             no_sync_with=None,
             within_inames_is_final=None,
             within_inames=None,
-            boostable=None, boostable_into=None, tags=None,
+            tags=None,
             temp_var_type=Optional(), atomicity=(),
-            priority=0, predicates=frozenset(),
-            insn_deps=None, insn_deps_is_final=None,
-            forced_iname_deps=None, forced_iname_deps_is_final=None):
+            priority=0, predicates=frozenset()):
 
         super(Assignment, self).__init__(
                 id=id,
@@ -923,15 +840,9 @@ class Assignment(MultiAssignmentBase):
                 no_sync_with=no_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
-                boostable=boostable,
-                boostable_into=boostable_into,
                 priority=priority,
                 predicates=predicates,
-                tags=tags,
-                insn_deps=insn_deps,
-                insn_deps_is_final=insn_deps_is_final,
-                forced_iname_deps=forced_iname_deps,
-                forced_iname_deps_is_final=forced_iname_deps_is_final)
+                tags=tags)
 
         from loopy.symbolic import parse
         if isinstance(assignee, str):
@@ -959,12 +870,15 @@ class Assignment(MultiAssignmentBase):
     def assignee_subscript_deps(self):
         return (_get_assignee_subscript_deps(self.assignee),)
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, assignee_f=None):
+        if assignee_f is None:
+            assignee_f = f
+
         return self.copy(
-                assignee=f(self.assignee, *args),
-                expression=f(self.expression, *args),
+                assignee=assignee_f(self.assignee),
+                expression=f(self.expression),
                 predicates=frozenset(
-                    f(pred, *args) for pred in self.predicates))
+                    f(pred) for pred in self.predicates))
 
     # }}}
 
@@ -1044,12 +958,9 @@ class CallInstruction(MultiAssignmentBase):
             no_sync_with=None,
             within_inames_is_final=None,
             within_inames=None,
-            boostable=None, boostable_into=None, tags=None,
+            tags=None,
             temp_var_types=None,
-            priority=0, predicates=frozenset(),
-            insn_deps=None, insn_deps_is_final=None,
-            forced_iname_deps=None,
-            forced_iname_deps_is_final=None):
+            priority=0, predicates=frozenset()):
 
         super(CallInstruction, self).__init__(
                 id=id,
@@ -1060,15 +971,9 @@ class CallInstruction(MultiAssignmentBase):
                 no_sync_with=no_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
-                boostable=boostable,
-                boostable_into=boostable_into,
                 priority=priority,
                 predicates=predicates,
-                tags=tags,
-                insn_deps=insn_deps,
-                insn_deps_is_final=insn_deps_is_final,
-                forced_iname_deps=forced_iname_deps,
-                forced_iname_deps_is_final=forced_iname_deps_is_final)
+                tags=tags)
 
         from pymbolic.primitives import Call
         from loopy.symbolic import Reduction
@@ -1114,12 +1019,15 @@ class CallInstruction(MultiAssignmentBase):
                 _get_assignee_subscript_deps(a)
                 for a in self.assignees)
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, assignee_f=None):
+        if assignee_f is None:
+            assignee_f = f
+
         return self.copy(
-                assignees=f(self.assignees, *args),
-                expression=f(self.expression, *args),
+                assignees=assignee_f(self.assignees),
+                expression=f(self.expression),
                 predicates=frozenset(
-                    f(pred, *args) for pred in self.predicates))
+                    f(pred) for pred in self.predicates))
 
     # }}}
 
@@ -1224,9 +1132,8 @@ class CInstruction(InstructionBase):
             groups=None, conflicts_with_groups=None,
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
-            priority=0, boostable=None, boostable_into=None,
-            predicates=frozenset(), tags=None,
-            insn_deps=None, insn_deps_is_final=None):
+            priority=0,
+            predicates=frozenset(), tags=None):
         """
         :arg iname_exprs: Like :attr:`iname_exprs`, but instead of tuples,
             simple strings pepresenting inames are also allowed. A single
@@ -1245,11 +1152,7 @@ class CInstruction(InstructionBase):
                 no_sync_with=no_sync_with,
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
-                boostable=boostable,
-                boostable_into=boostable_into,
-                priority=priority, predicates=predicates, tags=tags,
-                insn_deps=insn_deps,
-                insn_deps_is_final=insn_deps_is_final)
+                priority=priority, predicates=predicates, tags=tags)
 
         # {{{ normalize iname_exprs
 
@@ -1315,14 +1218,17 @@ class CInstruction(InstructionBase):
                 _get_assignee_subscript_deps(a)
                 for a in self.assignees)
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, assignee_f=None):
+        if assignee_f is None:
+            assignee_f = f
+
         return self.copy(
                 iname_exprs=[
-                    (name, f(expr, *args))
+                    (name, f(expr))
                     for name, expr in self.iname_exprs],
-                assignees=[f(a, *args) for a in self.assignees],
+                assignees=[assignee_f(a) for a in self.assignees],
                 predicates=frozenset(
-                    f(pred, *args) for pred in self.predicates))
+                    f(pred) for pred in self.predicates))
 
     # }}}
 
@@ -1357,7 +1263,7 @@ class _DataObliviousInstruction(InstructionBase):
     def assignee_subscript_deps(self):
         return frozenset()
 
-    def with_transformed_expressions(self, f, *args):
+    def with_transformed_expressions(self, f, assignee_f=None):
         return self.copy(
                 predicates=frozenset(
                     f(pred) for pred in self.predicates))
@@ -1386,7 +1292,6 @@ class NoOpInstruction(_DataObliviousInstruction):
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
             priority=None,
-            boostable=None, boostable_into=None,
             predicates=None, tags=None):
         super(NoOpInstruction, self).__init__(
                 id=id,
@@ -1398,8 +1303,6 @@ class NoOpInstruction(_DataObliviousInstruction):
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
                 priority=priority,
-                boostable=boostable,
-                boostable_into=boostable_into,
                 predicates=predicates,
                 tags=tags)
 
@@ -1448,7 +1351,6 @@ class BarrierInstruction(_DataObliviousInstruction):
             no_sync_with=None,
             within_inames_is_final=None, within_inames=None,
             priority=None,
-            boostable=None, boostable_into=None,
             predicates=None, tags=None, synchronization_kind="global",
             mem_kind="local"):
 
@@ -1465,8 +1367,6 @@ class BarrierInstruction(_DataObliviousInstruction):
                 within_inames_is_final=within_inames_is_final,
                 within_inames=within_inames,
                 priority=priority,
-                boostable=boostable,
-                boostable_into=boostable_into,
                 predicates=predicates,
                 tags=tags
                 )

@@ -68,8 +68,8 @@ def test_globals_decl_once_with_multi_subprogram(ctx_factory):
             out[ii] = 2*out[ii]+cnst[ii]{id=second}
             """,
             [lp.TemporaryVariable(
-                'cnst', shape=('n'), initializer=cnst,
-                address_space=lp.AddressSpace.GLOBAL,
+                'cnst', initializer=cnst,
+                scope=lp.AddressSpace.GLOBAL,
                 read_only=True), '...'])
     knl = lp.fix_parameters(knl, n=16)
     knl = lp.add_barrier(knl, "id:first", "id:second")
@@ -177,7 +177,7 @@ def test_simple_side_effect(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-            "{[i,j]: 0<=i,j<100}",
+            "{[i]: 0<=i<100}",
             """
                 a[i] = a[i] + 1
                 """,
@@ -456,7 +456,7 @@ def test_nonlinear_index(ctx_factory):
     ctx = ctx_factory()
 
     knl = lp.make_kernel(
-            "{[i,j]: 0<=i,j<n }",
+            "{[i]: 0<=i<n }",
             """
                 a[i*i] = 17
                 """,
@@ -564,7 +564,7 @@ def test_dependent_domain_insn_iname_finding(ctx_factory):
 
     knl = lp.make_kernel([
             "{[isrc_box]: 0<=isrc_box<nsrc_boxes}",
-            "{[isrc,idim]: isrc_start<=isrc<isrc_end and 0<=idim<dim}",
+            "{[isrc]: isrc_start<=isrc<isrc_end}",
             ],
             """
                 <> src_ibox = source_boxes[isrc_box]
@@ -769,7 +769,7 @@ def test_multiple_writes_to_local_temporary():
     # writes are OK.
 
     knl = lp.make_kernel(
-        "{[i,e]: 0<=i<5 and 0<=e<nelements}",
+        "{[i]: 0<=i<5}",
         """
         <> temp[i, 0] = 17
         temp[i, 1] = 15
@@ -952,7 +952,7 @@ def test_atomic_init(dtype):
     vec_width = 4
 
     knl = lp.make_kernel(
-            "{ [i,j]: 0<=i<100 }",
+            "{ [i]: 0<=i<100 }",
             """
             out[i%4] = 0 {id=init, atomic=init}
             """,
@@ -1555,7 +1555,7 @@ def test_finite_difference_expr_subst(ctx_factory):
             gpu_knl, "f_subst", "inew_inner", fetch_bounding_box=True,
             default_tag="l.auto")
 
-    precomp_knl = lp.tag_inames(precomp_knl, {"j_0_outer": "unr"})
+    precomp_knl = lp.tag_inames(precomp_knl, {"j_outer": "unr"})
     precomp_knl = lp.set_options(precomp_knl, return_dict=True)
     evt, _ = precomp_knl(queue, u=u, h=h)
 
@@ -1705,8 +1705,8 @@ def test_global_barrier(ctx_factory):
                     ... gbarrier {id=top}
                     <> z[i] = z[i+1] + z[i]  {id=wr_z,dep=top}
                     <> v[i] = 11  {id=wr_v,dep=top}
-                    ... gbarrier {dep=wr_z:wr_v,id=yoink}
-                    z[i] = z[i] - z[i+1] + v[i] {id=iupd, dep=wr_z}
+                    ... gbarrier {id=yoink,dep=wr_z:wr_v}
+                    z[i] = z[i] - z[i+1] + v[i] {id=iupd, dep=yoink}
                 end
                 ... gbarrier {dep=iupd,id=postloop}
                 z[i] = z[i] - z[i+1] + v[i]  {dep=postloop}
@@ -1926,8 +1926,9 @@ def test_scalars_with_base_storage(ctx_factory):
     ctx = ctx_factory()
     queue = cl.CommandQueue(ctx)
 
+    import islpy as isl
     knl = lp.make_kernel(
-            "{ [i]: 0<=i<1}",
+            [isl.BasicSet("[] -> {[]: }")],  # empty (domain w/unused inames errors)
             "a = 1",
             [lp.TemporaryVariable("a", dtype=np.float64,
                                   shape=(), base_storage="base")])
@@ -2856,6 +2857,33 @@ def test_non_integral_array_idx_raises():
     from loopy.diagnostic import LoopyError
     with pytest.raises(LoopyError):
         print(lp.generate_code_v2(knl).device_code())
+
+
+@pytest.mark.parametrize("tag", ["for", "l.0", "g.0", "fixed"])
+def test_empty_domain(ctx_factory, tag):
+    ctx = ctx_factory()
+    queue = cl.CommandQueue(ctx)
+
+    prg = lp.make_kernel(
+            "{[i,j]: 0 <= i < n}",
+            """
+            for i
+                c = 1
+            end
+            """)
+
+    if tag == "fixed":
+        prg = lp.fix_parameters(prg, n=0)
+        kwargs = {}
+    else:
+        prg = lp.tag_inames(prg, {"i": tag})
+        kwargs = {"n": 0}
+
+    prg = lp.set_options(prg, write_code=True)
+    c = cl.array.zeros(queue, (), dtype=np.int32)
+    prg(queue, c=c, **kwargs)
+
+    assert (c.get() == 0).all()
 
 
 if __name__ == "__main__":

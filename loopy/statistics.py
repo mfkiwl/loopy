@@ -493,7 +493,7 @@ class Op(Record):
 
     .. attribute:: dtype
 
-       A :class:`loopy.LoopyType` or :class:`numpy.dtype` that specifies the
+       A :class:`loopy.types.LoopyType` or :class:`numpy.dtype` that specifies the
        data type operated on.
 
     .. attribute:: name
@@ -551,7 +551,7 @@ class MemAccess(Record):
 
     .. attribute:: dtype
 
-       A :class:`loopy.LoopyType` or :class:`numpy.dtype` that specifies the
+       A :class:`loopy.types.LoopyType` or :class:`numpy.dtype` that specifies the
        data type accessed.
 
     .. attribute:: lid_strides
@@ -585,7 +585,7 @@ class MemAccess(Record):
     .. attribute:: variable_tag
 
        A :class:`str` that specifies the variable tag of a
-       :class:`pymbolic.primitives.TaggedVariable`.
+       :class:`loopy.symbolic.TaggedVariable`.
 
     .. attribute:: count_granularity
 
@@ -891,14 +891,22 @@ def _get_lid_and_gid_strides(knl, array, index):
 
     def get_iname_strides(tag_to_iname_dict):
         tag_to_stride_dict = {}
+
+        if array.dim_tags is None:
+            assert len(index) <= 1
+            dim_tags = (None,) * len(index)
+        else:
+            dim_tags = array.dim_tags
+
         for tag, iname in six.iteritems(tag_to_iname_dict):
             total_iname_stride = 0
             # find total stride of this iname for each axis
-            for idx, axis_tag in zip(index, array.dim_tags):
+            for idx, axis_tag in zip(index, dim_tags):
                 # collect index coefficients
                 try:
-                    coeffs = _IndexStrideCoefficientCollector()(
-                              simplify_using_aff(knl, idx))
+                    coeffs = _IndexStrideCoefficientCollector(
+                            [tag_to_iname_dict[tag]])(
+                                    simplify_using_aff(knl, idx))
                 except ExpressionNotAffineError:
                     total_iname_stride = None
                     break
@@ -914,6 +922,14 @@ def _get_lid_and_gid_strides(knl, array, index):
                 # now determine stride
                 if isinstance(axis_tag, FixedStrideArrayDimTag):
                     axis_tag_stride = axis_tag.stride
+
+                    if axis_tag_stride is lp.auto:
+                        total_iname_stride = None
+                        break
+
+                elif axis_tag is None:
+                    axis_tag_stride = 1
+
                 else:
                     continue
 
@@ -1353,7 +1369,7 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
 
     :arg numpy_types: A :class:`bool` specifying whether the types in the
         returned mapping should be numpy types instead of
-        :class:`loopy.LoopyType`.
+        :class:`loopy.types.LoopyType`.
 
     :arg count_redundant_work: Based on usage of hardware axes or other
         specifics, a kernel may perform work redundantly. This :class:`bool`
@@ -1404,10 +1420,6 @@ def get_op_map(knl, numpy_types=True, count_redundant_work=False,
         # (now use these counts to, e.g., predict performance)
 
     """
-
-    if not knl.options.ignore_boostable_into:
-        raise LoopyError("Kernel '%s': Using operation counting requires the option "
-                "ignore_boostable_into to be set." % knl.name)
 
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
@@ -1519,7 +1531,7 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
 
     :arg numpy_types: A :class:`bool` specifying whether the types in the
         returned mapping should be numpy types instead of
-        :class:`loopy.LoopyType`.
+        :class:`loopy.types.LoopyType`.
 
     :arg count_redundant_work: Based on usage of hardware axes or other
         specifics, a kernel may perform work redundantly. This :class:`bool`
@@ -1596,10 +1608,6 @@ def get_mem_access_map(knl, numpy_types=True, count_redundant_work=False,
         # (now use these counts to, e.g., predict performance)
 
     """
-
-    if not knl.options.ignore_boostable_into:
-        raise LoopyError("Kernel '%s': Using operation counting requires the option "
-                "ignore_boostable_into to be set." % knl.name)
 
     subgroup_size = _process_subgroup_size(knl, subgroup_size)
 
@@ -1712,10 +1720,6 @@ def get_synchronization_map(knl, subgroup_size=None):
         # (now use this count to, e.g., predict performance)
 
     """
-
-    if not knl.options.ignore_boostable_into:
-        raise LoopyError("Kernel '%s': Using operation counting requires the option "
-                "ignore_boostable_into to be set." % knl.name)
 
     from loopy.preprocess import preprocess_kernel, infer_unknown_types
     from loopy.schedule import (EnterLoop, LeaveLoop, Barrier,
@@ -1860,77 +1864,6 @@ def gather_access_footprint_bytes(kernel, ignore_uncountable=False):
             result[key] = bytes_transferred
 
     return result
-
-# }}}
-
-
-# {{{ compat goop
-
-def get_lmem_access_poly(knl):
-    """Count the number of local memory accesses in a loopy kernel.
-
-    get_lmem_access_poly is deprecated. Use get_mem_access_map and filter the
-    result with the mtype=['local'] option.
-
-    """
-    warn_with_kernel(knl, "deprecated_get_lmem_access_poly",
-                     "get_lmem_access_poly is deprecated. Use "
-                     "get_mem_access_map and filter the result with the "
-                     "mtype=['local'] option.")
-    return get_mem_access_map(knl).filter_by(mtype=['local'])
-
-
-def get_DRAM_access_poly(knl):
-    """Count the number of global memory accesses in a loopy kernel.
-
-    get_DRAM_access_poly is deprecated. Use get_mem_access_map and filter the
-    result with the mtype=['global'] option.
-
-    """
-    warn_with_kernel(knl, "deprecated_get_DRAM_access_poly",
-                     "get_DRAM_access_poly is deprecated. Use "
-                     "get_mem_access_map and filter the result with the "
-                     "mtype=['global'] option.")
-    return get_mem_access_map(knl).filter_by(mtype=['global'])
-
-
-def get_gmem_access_poly(knl):
-    """Count the number of global memory accesses in a loopy kernel.
-
-    get_DRAM_access_poly is deprecated. Use get_mem_access_map and filter the
-    result with the mtype=['global'] option.
-
-    """
-    warn_with_kernel(knl, "deprecated_get_gmem_access_poly",
-                     "get_DRAM_access_poly is deprecated. Use "
-                     "get_mem_access_map and filter the result with the "
-                     "mtype=['global'] option.")
-    return get_mem_access_map(knl).filter_by(mtype=['global'])
-
-
-def get_synchronization_poly(knl):
-    """Count the number of synchronization events each work-item encounters in
-    a loopy kernel.
-
-    get_synchronization_poly is deprecated. Use get_synchronization_map
-    instead.
-
-    """
-    warn_with_kernel(knl, "deprecated_get_synchronization_poly",
-                     "get_synchronization_poly is deprecated. Use "
-                     "get_synchronization_map instead.")
-    return get_synchronization_map(knl)
-
-
-def get_op_poly(knl, numpy_types=True):
-    """Count the number of operations in a loopy kernel.
-
-    get_op_poly is deprecated. Use get_op_map instead.
-
-    """
-    warn_with_kernel(knl, "deprecated_get_op_poly",
-                     "get_op_poly is deprecated. Use get_op_map instead.")
-    return get_op_map(knl, numpy_types)
 
 # }}}
 

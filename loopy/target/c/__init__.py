@@ -39,6 +39,16 @@ import pymbolic.primitives as p
 
 from pytools import memoize_method
 
+__doc__ = """
+.. currentmodule loopy.target.c
+
+.. autoclass:: POD
+
+.. autoclass:: ScopingBlock
+
+.. automodule:: loopy.target.c.codegen.expression
+"""
+
 
 # {{{ dtype registry wrapper
 
@@ -80,6 +90,11 @@ class DTypeRegistryWrapper(object):
 def c99_preamble_generator(preamble_info):
     if any(dtype.is_integral() for dtype in preamble_info.seen_dtypes):
         yield("10_stdint", "#include <stdint.h>")
+    if any(dtype.numpy_dtype == np.dtype("bool")
+           for dtype in preamble_info.seen_dtypes):
+        yield("10_stdbool", "#include <stdbool.h>")
+    if any(dtype.is_complex() for dtype in preamble_info.seen_dtypes):
+        yield("10_complex", "#include <complex.h>")
 
 
 def _preamble_generator(preamble_info, func_qualifier='inline'):
@@ -202,7 +217,7 @@ class POD(Declarator):
 
 class ScopingBlock(Block):
     """A block that is mandatory for scoping and may not be simplified away
-    by :func:`loopy.codegen.results.merge_codegen_results`.
+    by :func:`loopy.codegen.result.merge_codegen_results`.
     """
 
 
@@ -246,8 +261,7 @@ def generate_linearized_array(array, value):
 
     assert array.offset == 0
 
-    from pytools import indices_in_shape
-    for ituple in indices_in_shape(value.shape):
+    for ituple in np.ndindex(value.shape):
         i = sum(i_ax * strd_ax for i_ax, strd_ax in zip(ituple, strides))
         data[i] = value[ituple]
 
@@ -436,7 +450,7 @@ def c_math_mangler(target, name, arg_dtypes, modify_name=True):
                 arg_dtypes=arg_dtypes)
 
     # binary functions
-    if (name in ["fmax", "fmin"]
+    if (name in ["fmax", "fmin", "copysign"]
             and len(arg_dtypes) == 2):
 
         dtype = np.find_common_type(
@@ -1046,7 +1060,7 @@ def generate_header(kernel, codegen_result=None):
     """
     :arg kernel: a :class:`loopy.LoopKernel`
     :arg codegen_result: an instance of :class:`loopy.CodeGenerationResult`
-    :returns: a list of AST nodes (which may have :func:`str`
+    :returns: a list of AST nodes (which may have :class:`str`
         called on them to produce a string) representing
         function declarations for the generated device
         functions.
@@ -1083,9 +1097,11 @@ class CTarget(CFamilyTarget):
     @memoize_method
     def get_dtype_registry(self):
         from loopy.target.c.compyte.dtypes import (
-                DTypeRegistry, fill_registry_with_c99_stdint_types)
+                DTypeRegistry, fill_registry_with_c99_stdint_types,
+                fill_registry_with_c99_complex_types)
         result = DTypeRegistry()
         fill_registry_with_c99_stdint_types(result)
+        fill_registry_with_c99_complex_types(result)
         return DTypeRegistryWrapper(result)
 
 

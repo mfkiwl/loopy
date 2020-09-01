@@ -39,7 +39,7 @@ from loopy.library.function import (
 from loopy.kernel.instruction import (
         MemoryOrdering, memory_ordering,
         MemoryScope, memory_scope,
-        VarAtomicity, AtomicInit, AtomicUpdate,
+        VarAtomicity, OrderedAtomic, AtomicInit, AtomicUpdate,
         InstructionBase,
         MultiAssignmentBase, Assignment, ExpressionInstruction,
         CallInstruction, CInstruction, NoOpInstruction, BarrierInstruction)
@@ -78,7 +78,7 @@ from loopy.transform.iname import (
         affine_map_inames, find_unused_axis_tag,
         make_reduction_inames_unique,
         has_schedulable_iname_nesting, get_iname_duplication_options,
-        add_inames_to_insn)
+        add_inames_to_insn, add_inames_for_unused_hw_axes)
 
 from loopy.transform.instruction import (
         find_instructions, map_instructions,
@@ -123,12 +123,12 @@ from loopy.transform.add_barrier import add_barrier
 
 from loopy.type_inference import infer_unknown_types
 from loopy.preprocess import preprocess_kernel, realize_reduction
-from loopy.schedule import generate_loop_schedules, get_one_scheduled_kernel
-from loopy.statistics import (ToCountMap, CountGranularity, stringify_stats_mapping,
-        Op, MemAccess, get_op_poly, get_op_map, get_lmem_access_poly,
-        get_DRAM_access_poly, get_gmem_access_poly, get_mem_access_map,
-        get_synchronization_poly, get_synchronization_map,
-        gather_access_footprints, gather_access_footprint_bytes)
+from loopy.schedule import (
+    generate_loop_schedules, get_one_scheduled_kernel, get_one_linearized_kernel)
+from loopy.statistics import (ToCountMap, CountGranularity,
+        stringify_stats_mapping, Op, MemAccess, get_op_map, get_mem_access_map,
+        get_synchronization_map, gather_access_footprints,
+        gather_access_footprint_bytes)
 from loopy.codegen import (
         PreambleInfo,
         generate_code, generate_code_v2, generate_body)
@@ -164,7 +164,7 @@ __all__ = [
         "MemoryScope", "memory_scope",  # lower case is deprecated
 
         "VarAtomicity",
-        "AtomicInit", "AtomicUpdate",
+        "OrderedAtomic", "AtomicInit", "AtomicUpdate",
         "InstructionBase",
         "MultiAssignmentBase", "Assignment", "ExpressionInstruction",
         "CallInstruction", "CInstruction", "NoOpInstruction",
@@ -195,7 +195,7 @@ __all__ = [
         "affine_map_inames", "find_unused_axis_tag",
         "make_reduction_inames_unique",
         "has_schedulable_iname_nesting", "get_iname_duplication_options",
-        "add_inames_to_insn",
+        "add_inames_to_insn", "add_inames_for_unused_hw_axes",
 
         "add_prefetch", "change_arg_to_image",
         "tag_array_axes", "tag_data_axes",
@@ -248,16 +248,16 @@ __all__ = [
         "infer_unknown_types",
 
         "preprocess_kernel", "realize_reduction",
-        "generate_loop_schedules", "get_one_scheduled_kernel",
+        "generate_loop_schedules",
+        "get_one_scheduled_kernel", "get_one_linearized_kernel",
         "GeneratedProgram", "CodeGenerationResult",
         "PreambleInfo",
         "generate_code", "generate_code_v2", "generate_body",
 
         "ToCountMap", "CountGranularity", "stringify_stats_mapping", "Op",
-        "MemAccess", "get_op_poly", "get_op_map", "get_lmem_access_poly",
-        "get_DRAM_access_poly", "get_gmem_access_poly", "get_mem_access_map",
-        "get_synchronization_poly", "get_synchronization_map",
-        "gather_access_footprints", "gather_access_footprint_bytes",
+        "MemAccess",  "get_op_map", "get_mem_access_map",
+        "get_synchronization_map", "gather_access_footprints",
+        "gather_access_footprint_bytes",
 
         "CompiledKernel",
 

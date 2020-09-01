@@ -44,11 +44,23 @@ from loopy.type_inference import TypeInferenceMapper
 from loopy.diagnostic import LoopyError, LoopyWarning
 from loopy.tools import is_integer
 from loopy.types import LoopyType
+from loopy.target.c import CExpression
+
+
+__doc__ = """
+.. currentmodule:: loopy.target.c.codegen.expression
+
+.. autoclass:: ExpressionToCExpressionMapper
+"""
 
 
 # {{{ Loopy expression to C expression mapper
 
 class ExpressionToCExpressionMapper(IdentityMapper):
+    """
+    Mapper that converts a loopy-semantic expression to a C-semantic expression
+    with typecasts, appropriate arithmetic semantic mapping, etc.
+    """
     def __init__(self, codegen_state, fortran_abi=False, type_inf_mapper=None):
         self.kernel = codegen_state.kernel
         self.codegen_state = codegen_state
@@ -112,7 +124,6 @@ class ExpressionToCExpressionMapper(IdentityMapper):
             prec = PREC_NONE
 
         assert prec == PREC_NONE
-        from loopy.target.c import CExpression
         return CExpression(
                 self.codegen_state.ast_builder.get_c_expression_to_code_mapper(),
                 self.rec(expr, type_context, needed_dtype))

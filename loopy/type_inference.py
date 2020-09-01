@@ -428,11 +428,11 @@ def _infer_var_type(kernel, var_name, type_inf_mapper, subst_expander):
         if isinstance(writer_insn, lp.Assignment):
             result = type_inf_mapper(expr, return_dtype_set=True)
         elif isinstance(writer_insn, lp.CallInstruction):
-            return_dtype_set = type_inf_mapper(expr, return_tuple=True,
+            return_dtype_sets = type_inf_mapper(expr, return_tuple=True,
                     return_dtype_set=True)
 
             result = []
-            for return_dtype_set in return_dtype_set:
+            for return_dtype_set in return_dtype_sets:
                 result_i = None
                 found = False
                 for assignee, comp_dtype_set in zip(
@@ -532,7 +532,7 @@ def infer_unknown_types(kernel, expect_completion=False):
                 if read_var in names_for_type_inference))
             for written_var in names_for_type_inference)
 
-    from loopy.tools import compute_sccs
+    from pytools.graph import compute_sccs
 
     # To speed up processing, we sort the variables by computing the SCCs of the
     # type dependency graph. Each SCC represents a set of variables whose types
