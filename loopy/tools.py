@@ -28,6 +28,7 @@ from pytools.persistent_dict import KeyBuilder as KeyBuilderBase
 from loopy.symbolic import WalkMapper as LoopyWalkMapper
 from pymbolic.mapper.persistent_hash import (
         PersistentHashWalkMapper as PersistentHashWalkMapperBase)
+from loopy.diagnostic import LoopyError
 from sys import intern
 
 
@@ -601,4 +602,123 @@ def is_interned(s):
 def intern_frozenset_of_ids(fs):
     return frozenset(intern(s) for s in fs)
 
-# vim: foldmethod=marker
+
+def get_python_reproducer(kernel):
+    """
+    Returns a :class:`str` of a python code that instantiates *kernel*.
+
+    :arg kernel: An instance of :class:`loopy.LoopKernel`
+    """
+    from mako.template import Template
+    from loopy.kernel.instruction import MultiAssignmentBase, BarrierInstruction
+
+    options = {}  # options: mapping from insn_id to str of options
+
+    for insn in kernel.instructions:
+        option = f"id={insn.id}, "
+        if insn.depends_on:
+            option += ("dep="+":".join(insn.depends_on)+", ")
+        if insn.tags:
+            option += ("tags="+":".join(insn.tags)+", ")
+
+        if isinstance(insn, MultiAssignmentBase):
+            if insn.atomicity:
+                option += "atomic, "
+        elif isinstance(insn, BarrierInstruction):
+            option += (f"mem_kind={insn.mem_kind}, ")
+        else:
+            pass
+
+        options[insn.id] = option[:-2]  # get rid of the trailing ", "
+
+    python_code = r"""
+    <%! import loopy as lp %>
+    import loopy as lp
+    import numpy as np
+    from pymbolic.primitives import *
+
+    <%! tv_scope = {0: 'lp.AddressSpace.PRIVATE', 1: 'lp.AddressSpace.LOCAL',
+    2: 'lp.AddressSpace.GLOBAL', lp.auto: 'lp.auto' } %>
+    kernel = lp.make_kernel(
+        [
+        % for dom in kernel.domains:
+        "${str(dom)}",
+        % endfor
+        ],
+        '''
+        % for id, opts in options.items():
+        <% insn = kernel.id_to_insn[id] %>
+        % if isinstance(insn, lp.Assignment):
+        ${insn.assignee} = ${insn.expression} {${opts}}
+        % elif isinstance(insn, lp.BarrierInstruction):
+        ... ${insn.synchronization_kind[0]}barrier{${opts}}
+        % elif isinstance(insn, lp.NoOpInstruction):
+        ... nop {${opts}}
+        % else:
+        <% raise NotImplementedError("Not implemented for ${type(insn)}.")%>
+        % endif
+        %endfor
+        ''', [
+            % for arg in kernel.args:
+            % if isinstance(arg, lp.ValueArg):
+            lp.ValueArg(
+                name="${arg.name}",
+                dtype=${('np.'+arg.dtype.numpy_dtype.name
+                            if arg.dtype else 'lp.auto')},
+            % else:
+            lp.GlobalArg(
+                name="${arg.name}", dtype=${('np.'+arg.dtype.numpy_dtype.name
+                                                if arg.dtype else 'lp.auto')},
+                shape=${arg.shape}, for_atomic=${arg.for_atomic}),
+            % endif
+            % endfor
+            % for tv in kernel.temporary_variables.items():
+            lp.TemporaryVariable(
+                name="${tv.name}",
+                dtype=${'np.'+tv.dtype.numpy_dtype.name if arg.dtype else 'lp.auto'},
+                shape=${tv.shape}, for_atomic=${tv.for_atomic},
+                address_space=${tv_scope[tv.address_space]},
+                read_only=${tv.read_only},
+                % if tv.initializer is not None:
+                initializer=${"np."+repr(tv.initializer)},
+                % endif
+                ),
+            % endfor
+            ],
+            lang_version=${lp.MOST_RECENT_LANGUAGE_VERSION},
+    % if kernel.iname_slab_increments:
+            iname_slab_increments=${repr(kernel.iname_slab_increments)},
+    % endif
+    % if kernel.applied_iname_rewrites:
+            applied_iname_rewrites=${repr(kernel.applied_iname_rewrites)},
+    % endif
+    % if kernel.name != "loopy_kernel":
+            name="${kernel.name}",
+    % endif
+            )
+
+    % for iname, tags in kernel.iname_to_tags.items():
+    % for tag in tags:
+    kernel = lp.tag_inames(kernel, "${"%s:%s" %(iname, tag)}")
+    % endfor
+    % endfor
+    """
+
+    python_code = Template(python_code).render(options=options,
+            kernel=kernel)
+    python_code = remove_common_indentation(python_code)
+
+    # {{{ checking whether the written string is accurate
+
+    reproducer_variables = {}
+    exec(python_code, reproducer_variables)
+    if reproducer_variables["kernel"] != kernel:
+        # knl1 = kernel
+        # knl2 = reproducer_variables["kernel"]
+        raise LoopyError(f"Error generating reproducer for '{kernel.name}'.")
+
+    # }}}
+
+    return python_code
+
+# vim: fdm=marker

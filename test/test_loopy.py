@@ -3074,6 +3074,21 @@ def test_deps_from_conditionals():
     print(lp.generate_code_v2(ppknl).device_code())
 
 
+def test_repoducer_script():
+    knl = lp.make_kernel(
+            "{[i]: 0<=i<10}",
+            """
+            y[i] = sin(x[i]) {id=insn}
+            z[i] = sin(y[i]) {dep=insn}
+            """,
+            lang_version=(2018, 2),
+            name="sine")
+
+    knl = lp.split_iname(knl, "i", 4, inner_tag="l.0", outer_tag="g.0")
+
+    lp.get_python_reproducer(knl)  # contains check to assert roundtrip equivalence
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         exec(sys.argv[1])
