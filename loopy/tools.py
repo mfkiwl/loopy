@@ -672,7 +672,7 @@ def get_python_reproducer(kernel):
             lp.ValueArg(
                 name="${arg.name}",
                 dtype=${('np.'+arg.dtype.numpy_dtype.name
-                            if arg.dtype else 'lp.auto')},
+                            if arg.dtype else 'lp.auto')}),
             % else:
             lp.GlobalArg(
                 name="${arg.name}", dtype=${('np.'+arg.dtype.numpy_dtype.name

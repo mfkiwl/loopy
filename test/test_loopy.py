@@ -3074,9 +3074,9 @@ def test_deps_from_conditionals():
     print(lp.generate_code_v2(ppknl).device_code())
 
 
-def test_repoducer_script():
+def test_reproducer_script():
     knl = lp.make_kernel(
-            "{[i]: 0<=i<10}",
+            "{[i]: 0<=i<n}",
             """
             y[i] = sin(x[i]) {id=insn}
             z[i] = sin(y[i]) {dep=insn}
