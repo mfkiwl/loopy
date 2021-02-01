@@ -230,6 +230,14 @@ def remove_common_indentation(code, require_leading_newline=True,
 # }}}
 
 
+# {{{ remove_lines_with_only_spaces
+
+def remove_lines_with_only_spaces(code):
+    return "\n".join(line for line in code.split("\n") if set(line) != {" "})
+
+# }}}
+
+
 # {{{ build_ispc_shared_lib
 
 # DO NOT RELY ON THESE: THEY WILL GO AWAY
@@ -706,7 +714,8 @@ def get_python_reproducer(kernel):
 
     python_code = Template(python_code).render(options=options,
             kernel=kernel)
-    python_code = remove_common_indentation(python_code)
+    python_code = remove_lines_with_only_spaces(
+            remove_common_indentation(python_code))
 
     # {{{ checking whether the written string is accurate
 
