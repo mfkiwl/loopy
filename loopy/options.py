@@ -170,6 +170,12 @@ class Options(ImmutableRecord):
         to variables.
 
         If equal to ``"no_check"``, then no check is performed.
+
+    .. attribute:: insert_additional_gbarriers
+
+        If *True*, based on the memory dependency between variables in the
+        global address space loopy will insert global barriers to avoid
+        RAW, WAR and WAW races.
     """
 
     _legacy_options_map = {
@@ -234,6 +240,8 @@ class Options(ImmutableRecord):
 
                 enforce_variable_access_ordered=kwargs.get(
                     "enforce_variable_access_ordered", True),
+                insert_additional_gbarriers=kwargs.get(
+                    "insert_additional_gbarriers", False),
                 )
 
     # {{{ legacy compatibility
