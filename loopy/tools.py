@@ -693,7 +693,7 @@ def kernel_to_python(kernel, var_name="kernel"):
                 shape=${arg.shape}, for_atomic=${arg.for_atomic}),
             % endif
             % endfor
-            % for tv in kernel.temporary_variables.items():
+            % for tv in kernel.temporary_variables.values():
             lp.TemporaryVariable(
                 name="${tv.name}",
                 dtype=${'np.'+tv.dtype.numpy_dtype.name if arg.dtype else 'lp.auto'},
