@@ -611,6 +611,15 @@ def intern_frozenset_of_ids(fs):
     return frozenset(intern(s) for s in fs)
 
 
+def _verify_generated_reproducer_is_equivalent(python_code, kernel, var_name):
+    reproducer_variables = {}
+    exec(python_code, reproducer_variables)
+    if reproducer_variables[var_name] != kernel:
+        # knl1 = kernel
+        # knl2 = reproducer_variables["kernel"]
+        raise LoopyError(f"Error generating reproducer for '{kernel.name}'.")
+
+
 def kernel_to_python(kernel, var_name="kernel"):
     """
     Returns a :class:`str` of a python code that instantiates *kernel*.
@@ -725,16 +734,7 @@ def kernel_to_python(kernel, var_name="kernel"):
     python_code = remove_lines_with_only_spaces(
             remove_common_indentation(python_code))
 
-    # {{{ checking whether the written string is accurate
-
-    reproducer_variables = {}
-    exec(python_code, reproducer_variables)
-    if reproducer_variables["kernel"] != kernel:
-        # knl1 = kernel
-        # knl2 = reproducer_variables["kernel"]
-        raise LoopyError(f"Error generating reproducer for '{kernel.name}'.")
-
-    # }}}
+    _verify_generated_reproducer_is_equivalent(python_code, kernel, var_name)
 
     return python_code
 
