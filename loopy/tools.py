@@ -28,7 +28,6 @@ from pytools.persistent_dict import KeyBuilder as KeyBuilderBase
 from loopy.symbolic import WalkMapper as LoopyWalkMapper
 from pymbolic.mapper.persistent_hash import (
         PersistentHashWalkMapper as PersistentHashWalkMapperBase)
-from loopy.diagnostic import LoopyError
 from sys import intern
 
 
@@ -614,10 +613,7 @@ def intern_frozenset_of_ids(fs):
 def _verify_generated_reproducer_is_equivalent(python_code, kernel, var_name):
     reproducer_variables = {}
     exec(python_code, reproducer_variables)
-    if reproducer_variables[var_name] != kernel:
-        # knl1 = kernel
-        # knl2 = reproducer_variables["kernel"]
-        raise LoopyError(f"Error generating reproducer for '{kernel.name}'.")
+    assert reproducer_variables[var_name] == kernel
 
 
 def kernel_to_python(kernel, var_name="kernel"):
@@ -630,7 +626,7 @@ def kernel_to_python(kernel, var_name="kernel"):
 
     .. note::
 
-        The implementation is partially complete and a :class:`LoopyError` is
+        The implementation is partially complete and a :class:`AssertionError` is
         raised if the if the returned python script does not exactly reproduce
         *kernel*. Contributions are welcome to fill in the missing voids.
     """
