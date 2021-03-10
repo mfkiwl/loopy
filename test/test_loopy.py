@@ -3074,7 +3074,7 @@ def test_deps_from_conditionals():
     print(lp.generate_code_v2(ppknl).device_code())
 
 
-def test_reproducer_script():
+def test_kernel_to_python():
     knl = lp.make_kernel(
             "{[i]: 0<=i<n}",
             """
@@ -3086,7 +3086,7 @@ def test_reproducer_script():
 
     knl = lp.split_iname(knl, "i", 4, inner_tag="l.0", outer_tag="g.0")
 
-    lp.get_python_reproducer(knl)  # contains check to assert roundtrip equivalence
+    lp.kernel_to_python(knl)  # contains check to assert roundtrip equivalence
 
 
 if __name__ == "__main__":

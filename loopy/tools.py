@@ -611,11 +611,19 @@ def intern_frozenset_of_ids(fs):
     return frozenset(intern(s) for s in fs)
 
 
-def get_python_reproducer(kernel):
+def kernel_to_python(kernel, var_name="kernel"):
     """
     Returns a :class:`str` of a python code that instantiates *kernel*.
 
     :arg kernel: An instance of :class:`loopy.LoopKernel`
+    :arg var_name: A :class:`str` of the kernel variable name in the generated
+        python script.
+
+    .. note::
+
+        The implementation is partially complete and a :class:`LoopyError` is
+        raised if the if the returned python script does not exactly reproduce
+        *kernel*. Contributions are welcome to fill in the missing voids.
     """
     from mako.template import Template
     from loopy.kernel.instruction import MultiAssignmentBase, BarrierInstruction
@@ -647,7 +655,7 @@ def get_python_reproducer(kernel):
 
     <%! tv_scope = {0: 'lp.AddressSpace.PRIVATE', 1: 'lp.AddressSpace.LOCAL',
     2: 'lp.AddressSpace.GLOBAL', lp.auto: 'lp.auto' } %>
-    kernel = lp.make_kernel(
+    ${var_name} = lp.make_kernel(
         [
         % for dom in kernel.domains:
         "${str(dom)}",
@@ -707,13 +715,13 @@ def get_python_reproducer(kernel):
 
     % for iname, tags in kernel.iname_to_tags.items():
     % for tag in tags:
-    kernel = lp.tag_inames(kernel, "${"%s:%s" %(iname, tag)}")
+    ${var_name} = lp.tag_inames(${var_name}, "${"%s:%s" %(iname, tag)}")
     % endfor
     % endfor
     """
 
     python_code = Template(python_code).render(options=options,
-            kernel=kernel)
+            kernel=kernel, var_name=var_name)
     python_code = remove_lines_with_only_spaces(
             remove_common_indentation(python_code))
 
