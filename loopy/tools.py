@@ -64,9 +64,11 @@ class LoopyKeyBuilder(KeyBuilderBase):
     update_for_set = KeyBuilderBase.update_for_frozenset
 
     def update_for_dict(self, key_hash, key):
-        # Order matters for the hash--insert in sorted order.
-        for dict_key in sorted(key.keys()):
-            self.rec(key_hash, (dict_key, key[dict_key]))
+        from pytools import unordered_hash
+        unordered_hash(
+            key_hash,
+            (self.rec(self.new_hash(), (k, v)).digest()
+                for k, v in key.items()))
 
     update_for_defaultdict = update_for_dict
 
